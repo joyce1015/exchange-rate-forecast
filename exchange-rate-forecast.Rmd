@@ -1,0 +1,320 @@
+---
+title: "TS Project"
+author: "JZ"
+format: html
+editor: visual
+---
+
+## Data
+
+```{r}
+# library(httr2)
+# av_key <- "R32P4BSOMTHKYCSX"
+# 
+# av_link <- glue::glue("https://www.alphavantage.co/query?function=FEDERAL_FUNDS_RATE&interval=monthly&apikey={av_key}")
+# 
+# av_request <- request(av_link) %>%
+#   req_perform() %>%
+#   resp_body_string()
+# 
+# av_read <- RJSONIO::fromJSON(av_request)
+# 
+# av_series <- av_read$data
+# 
+# dates <- sapply(av_series, '[[', 'date')
+# values <- sapply(av_series, '[[', 'value')
+# 
+# values <- as.numeric(values)
+# 
+# df <- data.frame(date = dates, value = values)
+# 
+# df$date <- as.Date(df$date, format="%Y-%m-%d")
+# 
+# write.csv(df,"int_monthly.csv")
+```
+
+```{r}
+library(dplyr)
+library(lubridate)
+int_rate <- read.csv("/Users/jojo/Downloads/int_monthly.csv")
+ex_rate <- read.csv("/Users/jojo/Downloads/month_ex_rate.csv")
+
+ex_rate$Date <- as.Date(ex_rate$Date)
+
+int_rate$date <- ymd(int_rate$date)
+ex_rate$Date <- ymd(ex_rate$Date)
+
+# change date into yyyy-mm format
+int_rate$date <- format(int_rate$date, "%Y-%m")
+ex_rate$Date <- format(ex_rate$Date, "%Y-%m")
+
+names(int_rate)[names(int_rate) == "date"] <- "Date"
+
+df <- merge(ex_rate,int_rate, by = "Date", all.x = TRUE)
+df$X.x <- NULL
+df$X.y <- NULL
+colnames(df) <- c("Date","Open","High","Low","Close","Int_rate")
+
+
+df$Date <- ym(df$Date)
+
+df <- filter(df,df$Date >="2014-01-01")
+
+# fill NA
+colSums(is.na(df))
+df$Int_rate[is.na(df$Int_rate)] <- 5.33
+
+```
+
+### Plot
+
+```{r}
+par(mfrow = c(1,2))
+plot(df$Date, df$Close, xlab = "Date", ylab = "Ex rate", main = "Exchange rate", type= "l",lwd = 1.5, col = "red")
+
+plot(df$Date, df$Int_rate, xlab = "Date", ylab = "Int Rate", main = "Interest rate", type= "l",lwd = 1.5, col = "blue")
+```
+
+## Detrend
+
+### Exchange Rate
+
+```{r}
+library(forecast)
+library(zoo)
+library(tseries)
+library(car)
+
+ts_ex <- ts(df$Close,freq = 12)
+ts_int <- ts(df$Int_rate,freq = 12)
+
+mod1 <- tslm(ts_ex~trend)
+summary(mod1)
+plot(mod1$residuals)
+
+mod2 <- tslm(ts_ex~trend+I(trend^2)+I(trend^3))
+summary(mod2)
+plot(mod2$residuals)
+
+# creat time count
+df$month_count <- seq_len(nrow(df))
+
+# creat cyc
+df <- df %>%
+  mutate(Cycle1 = cos(2*pi*(1/48)*df$month_count)) %>%
+  as.data.frame()
+
+df <- df %>%
+  mutate(Cycle2 = sin(2*pi*(1/48)*df$month_count)) %>%
+  as.data.frame()
+
+mod3 <- tslm(ts_ex~trend+I(trend^2)+I(trend^3)+df$Cycle1+df$Cycle2)
+summary(mod3)
+
+# cycl2 not significan
+mod4 <- tslm(ts_ex~trend+I(trend^2)+I(trend^3)+df$Cycle1)
+summary(mod4)
+plot(mod4$residuals)
+
+# third cycle
+df <- df %>%
+  mutate(Cycle3 = cos(2*pi*(1/36)*df$month_count)) %>%
+  as.data.frame()
+
+df <- df %>%
+  mutate(Cycle4 = sin(2*pi*(1/36)*df$month_count)) %>%
+  as.data.frame()
+
+mod5 <- tslm(ts_ex~trend+I(trend^2)+I(trend^3)+df$Cycle1+df$Cycle3+df$Cycle4)
+summary(mod5)
+plot(mod5$residuals)
+
+ex_res <- mod5$residuals
+
+# look for point of rapid change (there are two points we can look at)
+
+```
+
+### Interest Rate
+
+```{r}
+mod6 <- tslm(ts_int~trend+I(trend^2))
+summary(mod6)
+plot(mod6$residuals)
+
+mod7 <- tslm(ts_int~trend+I(trend^2)+I(trend^3))
+summary(mod7)
+plot(mod7$residuals)
+
+df <- df %>%
+  mutate(Cycle5 = cos(2*pi*(1/108)*df$month_count)) %>%
+  as.data.frame()
+
+df <- df %>%
+  mutate(Cycle6 = sin(2*pi*(1/108)*df$month_count)) %>%
+  as.data.frame()
+
+mod8 <- tslm(ts_int~trend+I(trend^2)+I(trend^3)+df$Cycle5)
+summary(mod8)
+plot(mod8$residuals)
+
+df <- df %>%
+  mutate(Cycle7 = cos(2*pi*(1/84)*df$month_count)) %>%
+  as.data.frame()
+
+df <- df %>%
+  mutate(Cycle8 = sin(2*pi*(1/84)*df$month_count)) %>%
+  as.data.frame()
+
+mod9 <- tslm(ts_int~trend+I(trend^2)+I(trend^3)+df$Cycle5+df$Cycle7+df$Cycle8)
+summary(mod9)
+plot(mod9$residuals)
+
+df <- df %>%
+  mutate(Cycle9 = cos(2*pi*(1/48)*df$month_count)) %>%
+  as.data.frame()
+
+df <- df %>%
+  mutate(Cycle10 = sin(2*pi*(1/48)*df$month_count)) %>%
+  as.data.frame()
+
+mod10 <- tslm(ts_int~trend+I(trend^2)+I(trend^3)+df$Cycle5+df$Cycle7+df$Cycle8+df$Cycle9)
+summary(mod10)
+plot(mod10$residuals)
+
+int_res <- mod10$residuals
+```
+
+## Prediction with ARMAX
+
+```{r}
+# armax model
+library(data.table)
+par(mfrow=c(1,2))
+plot(ex_res, col = "red")
+plot(int_res, col = "blue")
+
+cor(ex_res, int_res)
+
+# creat lag
+New_data <- data.frame(ex_res, int_res) 
+invisible(setDT(New_data)[,paste0('Int_lag', 1:5):=shift(New_data$int_res, 1:5)][]) 
+format(cor(New_data,use="complete.obs"), digits=4)
+
+# find the highest correlation 
+ex_lagged <- ts(New_data$ex_res[6:122]) 
+int_lagged <- ts(New_data$Int_lag2[6:122]) 
+ARMAX_data<-data.frame(ex_lagged,int_lagged)
+
+# ARMAX model 
+ARMAX1 <- Arima(ts(ARMAX_data$ex_lagged[1:93]), order=c(1,0,1), xreg = ARMAX_data[1:93,-c(1)]) 
+summary(ARMAX1)
+ARMAX_res <- ARMAX1$residuals
+par(mfrow=c(1,2))
+Acf(ARMAX_res, main="ACF of the ARMAX residuals", col="darkred") 
+Pacf(ARMAX_res, main="PACF of the ARMAX residuals", col="purple")
+```
+
+### Forecast with ARMAX
+
+```{r}
+# Forecast with 24 validation
+nValid <- 24
+FCast <- predict(ARMAX1, newxreg=as.matrix(ARMAX_data$int_lagged[94:117]), h=24) 
+
+
+# Forecast the noise
+# Training set first:
+Training_noise <- mod5$fitted.values[1:93] 
+Training_signal <- ARMAX1$fitted[1:93] 
+Training_total = Training_noise + Training_signal
+
+# Validation set second:
+Valid_noise <- mod5$fitted.values[94:117] 
+Valid_signal<-FCast$pred
+Valid_total = Valid_noise+Valid_signal
+```
+
+```{r}
+# Plot the results 
+plot <- plot(df$Close, xlim = c(1,117), 
+             ylab = "Close price",
+             xlab = "Month Count", 
+             type = "l",xaxt = "n", 
+             main = "Exchange rate", 
+             lty = 2, 
+             lwd = 1.5, 
+             col = "black")
+
+axis(1, at = seq(1, 118, 1), 
+     labels = format(seq(1, 118, 1)))
+
+lines(mod5$fitted.values[1:122], col="blue") 
+lines(Training_total, lwd = 2, col="green") 
+lines(Valid_total, lwd=2, col="red")
+
+lines(c(93, 93), c(0, 8))
+lines(c(117, 117), c(0, 8))
+legend("topleft", inset=c(0, 0), legend=c("Time-based noise forecast",
+                                          "ARMAX on Training Data", 
+                                          "ARMAX on Validation Data"), 
+       col=c("blue","green", "red"), pch=1, cex=0.5)
+```
+
+```{r}
+# forecasting
+future_forecast <- forecast(ARMAX1, xreg = ARMAX_data[1:93,-c(1)])
+autoplot(future_forecast)
+```
+
+### Forecasting with NN(non-detrend data)
+
+```{r}
+setup<-nnetar(df$Close[1:122], p=12, repeats=20, lambda="auto")
+
+Fcast<-forecast(setup, PI=TRUE, h=24)
+
+autoplot(Fcast)
+
+# df_Fcast <- as.data.frame(unlist(Fcast$mean))
+# write.csv(df_Fcast,"forecast_result.csv")
+```
+
+Plot the forecast results against actual:
+
+```{r}
+plot(df$Close,ylab = "Ex rate", col = "black",
+xlab = "Time", type = "l", xaxt = "n",lwd = 1.5,
+xlim = c(1,130), main = "", lty = 2)
+axis(1, at = seq(1, 130, 1), labels = format(seq(1, 130, 1)))
+lines(Fcast$mean, col="blue",lwd = 2)
+lines(Fcast$fitted, col="red", lwd = 2)
+lines(c(98, 98), c(0, 8))
+lines(c(122, 122), c(0, 8))
+legend("topleft", inset=c(0, 0), legend=c("Neural Network Forecast - mean value",
+"Actual","Fitted to Training data"),col=c("blue","black", "red"), pch=1, cex=0.5)
+```
+
+## Model Comparison
+
+```{r}
+# Armax
+Actual<-df$Close[99:122]
+Armax<-Valid_total
+
+# Remove NA values from both Actual and Armax
+valid_indices <- !is.na(Actual) & !is.na(Armax)
+Actual_clean <- Actual[valid_indices]
+Armax_clean <- Armax[valid_indices]
+
+# Compute MAPE
+ARMA_MAPE <- mean(abs(Actual_clean - Armax_clean) / Actual_clean)
+ARMA_MAPE
+```
+
+```{r}
+#Neural net on actual data
+Nnet_actual<-Fcast$mean
+Nnet_actual_MAPE<-mean(abs(Actual-Nnet_actual)/Actual)
+Nnet_actual_MAPE
+```
