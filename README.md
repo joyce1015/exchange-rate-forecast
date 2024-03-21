@@ -1,1 +1,2 @@
 # exchange-rate-forecast
+The project aims to utilize time series models to forecast the exchange rate between the Chinese RMB and the US Dollar. With China's significant role in the global economy, accurate exchange rate predictions are crucial for international businesses to optimize their operations and mitigate financial risks. The project covers a detailed analysis period, using historical exchange rate data along with relevant economic indicators, such as the US Fed Funds Interest Rate. The forecast aims to support strategic business decisions for the next 3 years.
